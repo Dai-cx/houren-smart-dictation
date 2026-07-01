@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { RootLayout } from "./layouts/root-layout";
 import { HomePage } from "./pages/home";
+import InputTaskPage from "./pages/InputTaskPage";
 import { DictationPage } from "./pages/dictation";
 import { PhotoUploadPage } from "./pages/upload";
 import { CorrectionPage } from "./pages/correction";
@@ -12,6 +13,7 @@ const router = createBrowserRouter([
     element: <RootLayout />,
     children: [
       { index: true, element: <HomePage /> },
+      { path: "input", element: <InputTaskPage /> },
       { path: "dictation", element: <DictationPage /> },
       { path: "upload", element: <PhotoUploadPage /> },
       { path: "correction", element: <CorrectionPage /> },

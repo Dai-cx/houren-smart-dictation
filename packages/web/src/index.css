@@ -1,45 +1,59 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #ffffff;
-  --color-foreground: #09090b;
-  --color-primary: #18181b;
-  --color-primary-foreground: #fafafa;
-  --color-muted: #f4f4f5;
-  --color-muted-foreground: #71717a;
-  --color-accent: #f4f4f5;
-  --color-accent-foreground: #18181b;
-  --color-border: #e4e4e7;
-  --color-ring: #18181b;
+  --color-background: #e8f4fd;
+  --color-foreground: #3d3d3d;
+  --color-primary: #ff7eb3;
+  --color-primary-foreground: #ffffff;
+  --color-muted: #e8f5e9;
+  --color-muted-foreground: #7a9e7e;
+  --color-accent: #fff3cd;
+  --color-accent-foreground: #6d5e2f;
+  --color-border: #d4e8f0;
+  --color-ring: #ff7eb3;
+  --color-card: rgba(255, 255, 255, 0.85);
 }
 
 @layer base {
   :root {
-    --background: hsl(0 0% 100%);
-    --foreground: hsl(240 10% 3.9%);
+    --background: hsl(204 50% 95%);
+    --foreground: hsl(0 0% 24%);
     --card: hsl(0 0% 100%);
-    --card-foreground: hsl(240 10% 3.9%);
+    --card-foreground: hsl(0 0% 24%);
     --popover: hsl(0 0% 100%);
-    --popover-foreground: hsl(240 10% 3.9%);
-    --primary: hsl(240 5.9% 10%);
-    --primary-foreground: hsl(0 0% 98%);
-    --secondary: hsl(240 4.8% 95.9%);
-    --secondary-foreground: hsl(240 5.9% 10%);
-    --muted: hsl(240 4.8% 95.9%);
-    --muted-foreground: hsl(240 3.8% 46.1%);
-    --accent: hsl(240 4.8% 95.9%);
-    --accent-foreground: hsl(240 5.9% 10%);
-    --destructive: hsl(0 84.2% 60.2%);
+    --popover-foreground: hsl(0 0% 24%);
+    --primary: hsl(345 80% 68%);
+    --primary-foreground: hsl(0 0% 100%);
+    --secondary: hsl(140 30% 93%);
+    --secondary-foreground: hsl(0 0% 24%);
+    --muted: hsl(140 30% 93%);
+    --muted-foreground: hsl(140 10% 55%);
+    --accent: hsl(48 80% 90%);
+    --accent-foreground: hsl(42 30% 30%);
+    --destructive: hsl(0 70% 58%);
     --destructive-foreground: hsl(0 0% 98%);
-    --border: hsl(240 5.9% 90%);
-    --input: hsl(240 5.9% 90%);
-    --ring: hsl(240 5.9% 10%);
-    --radius: 0.5rem;
+    --border: hsl(200 30% 86%);
+    --input: hsl(200 30% 86%);
+    --ring: hsl(345 80% 68%);
+    --radius: 1.25rem;
   }
 }
 
+/* ===== 全屏背景 ===== */
 body {
-  @apply bg-background text-foreground;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Noto Sans SC", sans-serif;
+  background-image: url("/images/bg-spring.jpg?v=2");
+  background-size: cover;
+  background-position: center center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  color: var(--foreground);
+}
+
+#root {
+  position: relative;
+  z-index: 1;
 }
