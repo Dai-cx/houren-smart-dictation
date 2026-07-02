@@ -32,24 +32,79 @@ npm run build            # 生产构建
 
 ```
 浏览器 → Vite (5173) → /trpc 代理 → Express (3000) → tRPC 中间件
-  → context（注入 db 实例）→ router → Drizzle 查询 → SQLite
+  → context（注入 db 实例）→ router → Drizzle 查询 / 阿里云 API → SQLite
 ```
 
 tRPC 过程：`query`（GET，幂等读取）/ `mutation`（POST，写入）。v11 中 query 默认只接受 GET。
 
 开发时 Vite 将 `/trpc` 代理到后端，trpc client 使用相对路径 `"/trpc"`。
 
-### 页面路由
+### 页面路由与数据流
 
 ```
-/            → HomePage          词表输入
-/dictation   → DictationPage     语音播报
-/upload      → PhotoUploadPage   拍照上传
-/correction  → CorrectionPage    批改结果
-/mistakes    → MistakeBookPage   错题本
+/            → HomePage           欢迎页（吉祥物 + 标题 + "开始听写"按钮 → /input）
+/input       → InputTaskPage      词表输入（粘贴词语 → 自动解析 → /dictation）
+/dictation   → DictationPage      语音播报（阿里云 TTS 合成 + 语速/间隔调节 → /upload）
+/upload      → PhotoUploadPage    拍照上传（图片预览 → OSS → OCR 识别 → /correction）
+/correction  → CorrectionPage     批改结果（逐字比对 + 正确率统计）
+/mistakes    → MistakeBookPage    错题本
 ```
 
-所有页面共享 `RootLayout`（胶囊导航栏 + `<Outlet />`），导航使用 `NavLink` 自动高亮。
+**页面间通过 React Router state 传递数据**：
+
+| 跳转 | state 内容 |
+|---|---|
+| `/input` → `/dictation` | `{ words: string[] }` |
+| `/dictation` → `/upload` | `{ words: string[] }` |
+| `/upload` → `/correction` | `{ words: string[], recognizedText: string }` |
+
+### 环境变量
+
+`.env` 文件位于 `packages/server/.env`，通过 `dotenv/config` 加载：
+
+| 变量 | 用途 |
+|---|---|
+| `DATABASE_URL` | SQLite 数据库路径 |
+| `PORT` | 服务端端口，默认 3000 |
+| `ALIBABA_ACCESS_KEY_ID` | 阿里云 AK（TTS + OCR + OSS 共用） |
+| `ALIBABA_ACCESS_KEY_SECRET` | 阿里云 SK |
+| `ALIBABA_TTS_APP_KEY` | 阿里云智能语音交互（NLS）项目 AppKey |
+| `ALIBABA_OSS_BUCKET` | OSS Bucket 名称（上海区域），OCR 图片中转 |
+| `ALIBABA_OCR_ENDPOINT` | OCR API 端点，默认 `ocr.cn-shanghai.aliyuncs.com` |
+
+### 阿里云服务集成
+
+三个阿里云服务共用一套 AK/SK（`ALIBABA_ACCESS_KEY_ID` / `ALIBABA_ACCESS_KEY_SECRET`）：
+
+| 服务 | 端点 | 模块 | tRPC Router |
+|---|---|---|---|
+| **TTS（语音合成）** | `nls-gateway.cn-shanghai.aliyuncs.com` | `lib/alibaba-tts.ts` | `tts.synthesize` (query) |
+| **OCR（文字识别）** | `ocr.cn-shanghai.aliyuncs.com` | `lib/alibaba-ocr.ts` | `ocr.recognize` (mutation) |
+| **OSS（对象存储）** | `oss-cn-shanghai` | `lib/alibaba-oss.ts` | 无（仅内部调用） |
+
+**认证方式**：TTS 使用 Token 认证（`nls-meta` 换取 token，token 缓存 24h）；OCR 使用 HMAC-SHA1 RPC 签名；OSS 使用 `ali-oss` SDK。
+
+**共用签名模块**：`lib/alibaba-signer.ts` 封装 HMAC-SHA1 百分比编码、规范化查询串构建和 RPC 签名计算，被 TTS 和 OCR 模块共用。支持 `bodyParams` 参数（纳入签名但不放入 URL）。
+
+**OCR 流程**：前端 base64 → tRPC → 服务端上传 OSS → 拿 OSS URL 调 `RecognizeCharacter` → 从 `Data.Results[].Text` 拼接识别文本 → 返回前端。
+
+### 导航栏
+
+`RootLayout` 胶囊形导航栏（`rounded-full`，毛玻璃 `bg-white/50 backdrop-blur-xl`）：
+
+- **左侧**：返回按钮（仅非首页，粉色圆框 ← 箭头）+ 吉祥物头像 + "听写小助手"
+- **中间**：当前步骤名称（纯文字，灰色，根据 `useLocation().pathname` 动态显示）
+- **右侧**：📖 错题本 `NavLink`（激活态粉→玫红渐变）
+
+返回按钮跳转目标（固定映射，不使用浏览器后退）：
+
+| 当前页面 | 返回目标 |
+|---|---|
+| `/input` | `/` |
+| `/dictation` | `/input` |
+| `/upload` | `/input` |
+| `/correction` | `/upload` |
+| `/mistakes` | `/` |
 
 ### 静态资源
 
@@ -66,30 +121,55 @@ tRPC 过程：`query`（GET，幂等读取）/ `mutation`（POST，写入）。v
 ### 目录约定
 
 ```
-packages/shared/src/types/   # DTO 接口定义，前后端共享
+packages/shared/src/types/     # DTO 接口定义，前后端共享
+  student.ts                   # StudentDTO, CreateStudentInput
+  dictation.ts                 # DictationExerciseDTO, CreateDictationInput
+  result.ts                    # DictationResultDTO, SubmitResultInput, ErrorEntry
+  tts.ts                       # TTSSynthesizeInput, TTSSynthesizeOutput
+  ocr.ts                       # OCRRecognizeInput, OCRRecognizeOutput
+  api.ts                       # PaginatedResponse<T>
 packages/server/src/
-  index.ts                   # Express 入口，挂载 tRPC 中间件
-  db/
-    index.ts                 # better-sqlite3 连接 + drizzle 实例
-    schema/                  # Drizzle 表定义（每文件一张表）
-      index.ts               # barrel export + InferSelect / Insert 类型导出
-  routers/
-    index.ts                 # appRouter 根路由，合并所有子路由
-  trpc/
-    trpc.ts                  # initTRPC → 导出 router / publicProcedure / middleware
-    context.ts               # 请求上下文工厂（向每个过程注入 db）
-packages/web/src/
-  main.tsx                   # React 入口（QueryClient + tRPC Provider + RouterProvider）
-  App.tsx                    # createBrowserRouter 路由配置
-  index.css                  # Tailwind v4 + 全屏背景图 + 主题色变量
+  index.ts                     # Express 入口（dotenv + json 10mb + tRPC 中间件 + /health）
   lib/
-    utils.ts                 # cn() 工具（clsx + tailwind-merge）
-    trpc.ts                  # tRPC React 客户端（createTRPCReact<AppRouter>）
+    alibaba-signer.ts          # 阿里云通用 HMAC-SHA1 RPC 签名
+    alibaba-tts.ts             # TTS Token 获取 + 语音合成
+    alibaba-ocr.ts             # OCR 手写识别（OSS 中转 → RecognizeCharacter）
+    alibaba-oss.ts             # OSS 图片上传
+  db/
+    index.ts                   # better-sqlite3 连接 + drizzle 实例
+    schema/                    # Drizzle 表定义
+      index.ts                 # barrel export
+  routers/
+    index.ts                   # appRouter（合并 student/dictation/result/tts/ocr）
+    student.ts                 # 学生 CRUD
+    dictation.ts               # 听写练习 CRUD
+    result.ts                  # 批改结果提交 + 评分
+    tts.ts                     # tts.synthesize (query)
+    ocr.ts                     # ocr.recognize (mutation)
+  trpc/
+    trpc.ts                    # initTRPC → router / publicProcedure / middleware
+    context.ts                 # 请求上下文（注入 db + req/res）
+  types/
+    ali-oss.d.ts               # ali-oss 模块类型声明
+packages/web/src/
+  main.tsx                     # React 入口（QueryClient + tRPC Provider + RouterProvider）
+  App.tsx                      # createBrowserRouter 路由配置
+  index.css                    # Tailwind v4 + 全屏背景图 + 主题色变量
+  lib/
+    utils.ts                   # cn() 工具（clsx + tailwind-merge）
+    trpc.ts                    # tRPC React 客户端（createTRPCReact<AppRouter>）
   layouts/
-    root-layout.tsx          # 胶囊导航栏（吉祥物 + 标题 + 圆角按钮组 + Outlet）
-  pages/                     # 各页面（毛玻璃卡片 + card-bg.png 底板 + 渐变标题）
-  styles/
-    spring.css               # CSS 动画（已废弃，不再引用）
+    root-layout.tsx            # 胶囊导航栏
+  pages/
+    home.tsx                   # HomePage — 欢迎页
+    InputTaskPage.tsx          # InputTaskPage — 词表输入（多分隔符解析 + 标签预览）
+    dictation/
+      index.tsx                # DictationPage — 阿里云 TTS 播报 + 语速/间隔滑块
+    upload.tsx                 # PhotoUploadPage — 文件选择/拖拽 + Canvas 压缩 + OCR 提交
+    correction.tsx             # CorrectionPage — 逐字比对 + 正确率统计 + 字符级高亮
+    mistakes.tsx               # MistakeBookPage
+  components/
+    spring-background.tsx      # 春天背景组件
 ```
 
 ### 视觉设计约定
@@ -101,6 +181,17 @@ packages/web/src/
 - **按钮**：`rounded-full`，渐变背景 + 彩色阴影，hover 时 `scale-105`
 - **色板**：粉（primary）、天蓝、翠绿、琥珀、紫，马卡龙低饱和度
 - **禁止**：不使用 emoji 作为图标，用图片素材或 SVG
+
+### 各页面主题色
+
+| 页面 | 标题渐变色 | 主按钮渐变色 |
+|---|---|---|
+| Home | rose→pink→orange | emerald→green |
+| InputTask | rose→pink→orange | emerald→green |
+| Dictation | sky→blue | emerald→green |
+| Upload | purple→pink | emerald→green |
+| Correction | green→emerald | emerald→green |
+| Mistakes | amber→orange | — |
 
 ### 数据库
 
@@ -118,6 +209,15 @@ packages/web/src/
 4. 在 `shared/src/index.ts` 导出新类型
 5. 在 `web/src/pages/` 创建页面（遵循视觉设计约定），在 `App.tsx` 添加路由
 6. 前端通过 `trpc.<router>.<procedure>.useQuery()` 或 `.useMutation()` 调用后端
+
+### 阿里云 API 签名机制
+
+`lib/alibaba-signer.ts` 的 `buildSignedQuery()` 实现标准 RPC 签名：
+
+- `extraParams` — 纳入签名 **且** 放入 URL query string（系统级参数）
+- `bodyParams` — 纳入签名 **但不** 放入 URL（业务数据由 POST body 单独发送）
+
+签名流程：合并系统参数 → 加入 extraParams + bodyParams → 排序 → 构建规范化查询串 → `METHOD&%2F&encodedQuery` → HMAC-SHA1 → Base64 → 百分比编码 → 拼接到 URL。
 
 ## 技能路由
 
