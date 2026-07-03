@@ -46,7 +46,7 @@ tRPC 过程：`query`（GET，幂等读取）/ `mutation`（POST，写入）。v
 /input       → InputTaskPage      词表输入（粘贴词语 → 自动解析 → /dictation）
 /dictation   → DictationPage      语音播报（阿里云 TTS 合成 + 语速/间隔调节 → /upload）
 /upload      → PhotoUploadPage    拍照上传（图片预览 → OSS → OCR 识别 → /correction）
-/correction  → CorrectionPage     批改结果（逐字比对 + 正确率统计）
+/correction  → CorrectionPage     批改结果（编辑距离对齐 + 正确率统计 + AI 错因分析）
 /mistakes    → MistakeBookPage    错题本
 ```
 
@@ -56,7 +56,7 @@ tRPC 过程：`query`（GET，幂等读取）/ `mutation`（POST，写入）。v
 |---|---|
 | `/input` → `/dictation` | `{ words: string[] }` |
 | `/dictation` → `/upload` | `{ words: string[] }` |
-| `/upload` → `/correction` | `{ words: string[], recognizedText: string }` |
+| `/upload` → `/correction` | `{ words: string[], recognizedText: string, ossImageUrl: string }` |
 
 ### 环境变量
 
@@ -70,6 +70,7 @@ tRPC 过程：`query`（GET，幂等读取）/ `mutation`（POST，写入）。v
 | `ALIBABA_ACCESS_KEY_SECRET` | 阿里云 SK |
 | `ALIBABA_TTS_APP_KEY` | 阿里云智能语音交互（NLS）项目 AppKey |
 | `ALIBABA_OSS_BUCKET` | OSS Bucket 名称（上海区域），OCR 图片中转 |
+| `DASHSCOPE_API_KEY` | 通义千问 API Key（DashScope），错因分析使用 |
 | `ALIBABA_OCR_ENDPOINT` | OCR API 端点，默认 `ocr.cn-shanghai.aliyuncs.com` |
 
 ### 阿里云服务集成
@@ -80,13 +81,16 @@ tRPC 过程：`query`（GET，幂等读取）/ `mutation`（POST，写入）。v
 |---|---|---|---|
 | **TTS（语音合成）** | `nls-gateway.cn-shanghai.aliyuncs.com` | `lib/alibaba-tts.ts` | `tts.synthesize` (query) |
 | **OCR（文字识别）** | `ocr.cn-shanghai.aliyuncs.com` | `lib/alibaba-ocr.ts` | `ocr.recognize` (mutation) |
+| **通义千问（错因分析）** | `dashscope.aliyuncs.com` | `lib/alibaba-qwen.ts` | `correction.analyze` (mutation) |
 | **OSS（对象存储）** | `oss-cn-shanghai` | `lib/alibaba-oss.ts` | 无（仅内部调用） |
 
 **认证方式**：TTS 使用 Token 认证（`nls-meta` 换取 token，token 缓存 24h）；OCR 使用 HMAC-SHA1 RPC 签名；OSS 使用 `ali-oss` SDK。
 
 **共用签名模块**：`lib/alibaba-signer.ts` 封装 HMAC-SHA1 百分比编码、规范化查询串构建和 RPC 签名计算，被 TTS 和 OCR 模块共用。支持 `bodyParams` 参数（纳入签名但不放入 URL）。
 
-**OCR 流程**：前端 base64 → tRPC → 服务端上传 OSS → 拿 OSS URL 调 `RecognizeCharacter` → 从 `Data.Results[].Text` 拼接识别文本 → 返回前端。
+**OCR 流程**：前端 base64 → tRPC → 服务端上传 OSS → 拿 OSS URL 调 `RecognizeCharacter` → 从 `Data.Results[].Text` 拼接识别文本 → 返回 `{ recognizedText, ossImageUrl }` 给前端。
+
+**通义千问多模态分析**：手写图片 OSS URL + OCR 文本 + 期望词表 → `qwen-vl-plus` 视觉模型 → 直接查看字迹判断错误类型（笔画错误/偏旁遗漏/形近混淆/OCR误识等）→ 返回结构化错因分析 JSON。
 
 ### 导航栏
 
@@ -127,14 +131,16 @@ packages/shared/src/types/     # DTO 接口定义，前后端共享
   result.ts                    # DictationResultDTO, SubmitResultInput, ErrorEntry
   tts.ts                       # TTSSynthesizeInput, TTSSynthesizeOutput
   ocr.ts                       # OCRRecognizeInput, OCRRecognizeOutput
+  correction.ts                # AlignedChar, ErrorAnalysis, CorrectionAnalysis, CorrectionAnalyzeInput
   api.ts                       # PaginatedResponse<T>
 packages/server/src/
   index.ts                     # Express 入口（dotenv + json 10mb + tRPC 中间件 + /health）
   lib/
     alibaba-signer.ts          # 阿里云通用 HMAC-SHA1 RPC 签名
     alibaba-tts.ts             # TTS Token 获取 + 语音合成
-    alibaba-ocr.ts             # OCR 手写识别（OSS 中转 → RecognizeCharacter）
+    alibaba-ocr.ts             # OCR 手写识别（OSS 中转 → RecognizeCharacter，返回 OSS URL）
     alibaba-oss.ts             # OSS 图片上传
+    alibaba-qwen.ts            # 通义千问视觉模型（qwen-vl-plus）多模态错因分析
   db/
     index.ts                   # better-sqlite3 连接 + drizzle 实例
     schema/                    # Drizzle 表定义
@@ -146,6 +152,7 @@ packages/server/src/
     result.ts                  # 批改结果提交 + 评分
     tts.ts                     # tts.synthesize (query)
     ocr.ts                     # ocr.recognize (mutation)
+    correction.ts              # correction.analyze (mutation) — AI 错因分析
   trpc/
     trpc.ts                    # initTRPC → router / publicProcedure / middleware
     context.ts                 # 请求上下文（注入 db + req/res）
@@ -158,6 +165,7 @@ packages/web/src/
   lib/
     utils.ts                   # cn() 工具（clsx + tailwind-merge）
     trpc.ts                    # tRPC React 客户端（createTRPCReact<AppRouter>）
+    diff.ts                    # 编辑距离对齐算法（Levenshtein 回溯）
   layouts/
     root-layout.tsx            # 胶囊导航栏
   pages/
@@ -166,7 +174,7 @@ packages/web/src/
     dictation/
       index.tsx                # DictationPage — 阿里云 TTS 播报 + 语速/间隔滑块
     upload.tsx                 # PhotoUploadPage — 文件选择/拖拽 + Canvas 压缩 + OCR 提交
-    correction.tsx             # CorrectionPage — 逐字比对 + 正确率统计 + 字符级高亮
+    correction.tsx             # CorrectionPage — 编辑距离对齐 + 正确率统计 + 字符级高亮 + AI 错因分析
     mistakes.tsx               # MistakeBookPage
   components/
     spring-background.tsx      # 春天背景组件

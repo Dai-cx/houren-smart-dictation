@@ -49,7 +49,7 @@ export function PhotoUploadPage() {
   const recognizeMutation = trpc.ocr.recognize.useMutation({
     onSuccess: (data) => {
       navigate("/correction", {
-        state: { words, recognizedText: data.recognizedText },
+        state: { words, recognizedText: data.recognizedText, ossImageUrl: data.ossImageUrl },
       });
     },
     onError: (err) => {

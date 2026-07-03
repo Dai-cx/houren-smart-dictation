@@ -10,7 +10,7 @@ export const ocrRouter = router({
       }),
     )
     .mutation(async ({ input }) => {
-      const recognizedText = await recognizeImage(input.imageBase64);
-      return { recognizedText };
+      const { recognizedText, ossImageUrl } = await recognizeImage(input.imageBase64);
+      return { recognizedText, ossImageUrl };
     }),
 });

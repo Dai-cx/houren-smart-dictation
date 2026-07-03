@@ -1,7 +1,7 @@
 import { buildSignedQuery } from "./alibaba-signer";
 import { uploadImageToOSS } from "./alibaba-oss";
 
-export async function recognizeImage(imageBase64: string): Promise<string> {
+export async function recognizeImage(imageBase64: string): Promise<{ recognizedText: string; ossImageUrl: string }> {
   const accessKeyId = process.env.ALIBABA_ACCESS_KEY_ID;
   const accessKeySecret = process.env.ALIBABA_ACCESS_KEY_SECRET;
 
@@ -12,7 +12,7 @@ export async function recognizeImage(imageBase64: string): Promise<string> {
   }
 
   // 1. Upload to OSS to get a Shanghai-region URL (required by RecognizeCharacter)
-  const ossUrl = await uploadImageToOSS(imageBase64);
+  const ossImageUrl = await uploadImageToOSS(imageBase64);
 
   // 2. Call OCR with the OSS URL
   const signedQuery = buildSignedQuery({
@@ -23,7 +23,7 @@ export async function recognizeImage(imageBase64: string): Promise<string> {
     method: "POST",
     extraParams: { RegionId: "cn-shanghai" },
     bodyParams: {
-      ImageURL: ossUrl,
+      ImageURL: ossImageUrl,
       MinHeight: "10",
       OutputProbability: "true",
       OutputCharInfo: "true",
@@ -39,7 +39,7 @@ export async function recognizeImage(imageBase64: string): Promise<string> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      ImageURL: ossUrl,
+      ImageURL: ossImageUrl,
       MinHeight: "10",
       OutputProbability: "true",
       OutputCharInfo: "true",
@@ -66,12 +66,12 @@ export async function recognizeImage(imageBase64: string): Promise<string> {
       .filter((r) => r.Probability > 0.5)
       .map((r) => r.Text)
       .join("");
-    if (text.trim()) return text.trim();
+    if (text.trim()) return { recognizedText: text.trim(), ossImageUrl };
   }
 
   // 兜底：从 Content 字段读取
   const text = data.Data?.Content?.trim();
-  if (text) return text;
+  if (text) return { recognizedText: text, ossImageUrl };
 
   throw new Error(
     `OCR API returned no text. Raw: ${JSON.stringify(data).slice(0, 600)}`,

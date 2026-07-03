@@ -4,4 +4,5 @@ export * from "./types/result";
 export * from "./types/api";
 export * from "./types/tts";
 export * from "./types/ocr";
+export * from "./types/correction";
 export * from "./constants";

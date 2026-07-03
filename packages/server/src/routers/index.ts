@@ -4,6 +4,7 @@ import { dictationRouter } from "./dictation";
 import { resultRouter } from "./result";
 import { ttsRouter } from "./tts";
 import { ocrRouter } from "./ocr";
+import { correctionRouter } from "./correction";
 
 export const appRouter = router({
   student: studentRouter,
@@ -11,6 +12,7 @@ export const appRouter = router({
   result: resultRouter,
   tts: ttsRouter,
   ocr: ocrRouter,
+  correction: correctionRouter,
 });
 
 export type AppRouter = typeof appRouter;
