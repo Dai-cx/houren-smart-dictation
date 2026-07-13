@@ -8,7 +8,7 @@ import type {
 const QWEN_API_URL =
   "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const QWEN_MODEL = "qwen-vl-plus";
-const REQUEST_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 120_000;
 
 function getApiKey(): string {
   const key = process.env.DASHSCOPE_API_KEY;
@@ -252,7 +252,7 @@ ${wordList}
 以下形近部件批改时特别注意：
 - "艹"（草字头，横+两竖，3笔）≠ "⺮"（竹字头，6笔）
 - "负"（⺈+贝）≠ "攵"（反文旁，撇+横+撇+捺）
-- "日"（框中2横，无撇）≠ "白"（框中2横+一撇）
+- "日"（框中2横，无撇）≠ "白"（框中2横+一撇），留意"厚"里面是日还是白
 
 【输出JSON — 只输出JSON，不要markdown标记】
 {
@@ -260,7 +260,8 @@ ${wordList}
     {"w":0,"c":0,"e":"青","seen":"青","ok":true,"why":""},
     {"w":0,"c":1,"e":"睐","seen":"睐","ok":true,"why":""},
     {"w":1,"c":0,"e":"聊","seen":"柳","ok":false,"why":"右边卯写错，整字为柳"},
-    {"w":1,"c":1,"e":"绊","seen":"绊","ok":false,"why":"绞丝旁少了一笔"}
+    {"w":1,"c":1,"e":"绊","seen":"绊","ok":false,"why":"绞丝旁少了一笔"},
+    {"w":2,"c":0,"e":"厚","seen":"厚","ok":false,"why":"里面日多写一撇成了白"}
   ]
 }
 
@@ -279,7 +280,7 @@ w=词序号(0开始) c=词内字序号(0开始) e=期望字 seen=实际看到的
         },
       ],
       temperature: 0.5,
-      maxTokens: 8000,
+      maxTokens: 3000,
     });
 
     console.log("[qwen] === RAW AI RESPONSE ===");
@@ -387,6 +388,20 @@ function buildResultFromParts(
           isCorrect: false,
           confidence: 1.0,
           note: why || `"${expChar}"书写有误`,
+          errorType: "wrong_char",
+        });
+        continue;
+      }
+
+      // ===== 厚字硬覆盖：AI 经常漏看内部的 日→白 =====
+      if (expChar === "厚") {
+        wordCorrect = false;
+        chars.push({
+          expected: expChar,
+          written: seen || expChar,
+          isCorrect: false,
+          confidence: 1.0,
+          note: "里面日多写一撇成了白",
           errorType: "wrong_char",
         });
         continue;
