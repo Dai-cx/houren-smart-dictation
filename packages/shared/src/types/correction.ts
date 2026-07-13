@@ -94,4 +94,6 @@ export interface CorrectionAnalysis {
   result: CorrectionResult;
   /** 错因详情（仅在有错字时包含） */
   errorDetails?: ErrorDetail[];
+  /** 标注后的图片 URL（绿勾或红圈），标注失败时为 undefined */
+  annotatedImageUrl?: string;
 }

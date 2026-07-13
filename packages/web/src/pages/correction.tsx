@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { trpc } from "../lib/trpc";
 
 // ==============================
-// CorrectionPage — AI 视觉批改（部件级拆解）
+// CorrectionPage — 标注图片展示
 // ==============================
 export function CorrectionPage() {
   const location = useLocation();
@@ -23,7 +23,8 @@ export function CorrectionPage() {
 
   const data = analyzeMutation.data;
   const summary = data?.result.summary;
-  const isAnomalous = data?.result.anomalous;
+  const annotatedImageUrl = data?.annotatedImageUrl;
+  const allCorrect = summary?.errorCount === 0;
 
   // ===== 空状态 =====
   if (!ossImageUrl || words.length === 0) {
@@ -44,9 +45,6 @@ export function CorrectionPage() {
             <div className="rounded-[1.5rem] border-2 border-dashed border-green-200 bg-green-50/30 p-12 text-center space-y-4">
               <p className="text-slate-400 text-lg font-medium">
                 请先上传照片进行批改
-              </p>
-              <p className="text-slate-300 text-sm">
-                拍照上传学生听写纸，系统自动批改
               </p>
             </div>
             <button
@@ -79,11 +77,7 @@ export function CorrectionPage() {
             </h2>
             <div className="animate-pulse space-y-4">
               <div className="h-8 bg-green-100/50 rounded-full w-48 mx-auto" />
-              <div className="grid grid-cols-3 gap-4">
-                <div className="h-24 bg-white/40 rounded-3xl" />
-                <div className="h-24 bg-white/40 rounded-3xl" />
-                <div className="h-24 bg-white/40 rounded-3xl" />
-              </div>
+              <div className="h-64 bg-white/40 rounded-3xl" />
               <p className="text-sm text-slate-400">AI 正在批改中，请稍候...</p>
             </div>
           </div>
@@ -128,8 +122,8 @@ export function CorrectionPage() {
     );
   }
 
-  // ===== 成功态 =====
-  const allCorrect = summary!.errorCount === 0;
+  // ===== 成功态 — 只展示标注图片 =====
+  const imageUrl = annotatedImageUrl || ossImageUrl;
 
   return (
     <div className="mx-auto max-w-3xl pt-6 space-y-6">
@@ -142,60 +136,31 @@ export function CorrectionPage() {
           backgroundPosition: "center",
         }}
       >
-        <div className="relative bg-white/30 backdrop-blur-[2px] p-8 md:p-10 text-center space-y-4">
+        <div className="relative bg-white/30 backdrop-blur-[2px] p-6 md:p-8 text-center space-y-3">
           <h2 className="text-3xl md:text-4xl font-extrabold bg-gradient-to-r from-green-400 to-emerald-500 bg-clip-text text-transparent">
             批改结果
           </h2>
           {allCorrect ? (
             <span className="inline-block rounded-full bg-green-100 text-green-600 px-4 py-1 text-sm font-bold">
-              🎉 全对！太棒了！
+              全对！太棒了！
             </span>
           ) : (
             <span className="inline-block rounded-full bg-red-100 text-red-500 px-4 py-1 text-sm font-bold">
               发现 {summary!.errorCount} 处错误
             </span>
           )}
+          <div className="text-xs text-slate-400">
+            {summary!.correctChars}/{summary!.totalChars} 字正确 · 正确率 {summary!.accuracyRate}%
+          </div>
+          {!annotatedImageUrl && (
+            <div className="text-xs text-amber-500">
+              标注生成失败，显示原图
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 统计卡片 */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="rounded-3xl bg-white/50 backdrop-blur-lg border border-white/60 shadow-xl p-6 text-center">
-          <div className="text-3xl font-extrabold text-green-500">
-            {summary!.correctChars}
-          </div>
-          <div className="mt-2 text-sm text-slate-400 font-medium">正确字数</div>
-        </div>
-        <div className="rounded-3xl bg-white/50 backdrop-blur-lg border border-white/60 shadow-xl p-6 text-center">
-          <div className="text-3xl font-extrabold text-sky-500">
-            {summary!.totalChars}
-          </div>
-          <div className="mt-2 text-sm text-slate-400 font-medium">总字数</div>
-        </div>
-        <div className="rounded-3xl bg-white/50 backdrop-blur-lg border border-white/60 shadow-xl p-6 text-center">
-          <div className="text-3xl font-extrabold text-orange-500">
-            {summary!.accuracyRate}%
-          </div>
-          <div className="mt-2 text-sm text-slate-400 font-medium">正确率</div>
-        </div>
-      </div>
-
-      {/* 异常警告 */}
-      {isAnomalous && (
-        <div className="rounded-2xl bg-yellow-50 border border-yellow-300 p-4 flex items-center gap-3">
-          <span className="text-2xl shrink-0">⚠️</span>
-          <div>
-            <div className="font-bold text-yellow-800">
-              批改结果可能存在异常
-            </div>
-            <div className="text-sm text-yellow-700">
-              建议重新上传更清晰的图片重试
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 原图展示 */}
+      {/* 标注图片 */}
       <div
         className="relative rounded-[2.5rem] shadow-2xl shadow-sky-200/40 overflow-hidden"
         style={{
@@ -206,18 +171,15 @@ export function CorrectionPage() {
       >
         <div className="relative bg-white/30 backdrop-blur-[2px] p-4 md:p-6">
           <img
-            src={ossImageUrl}
-            alt="听写原图"
-            className="w-full rounded-2xl shadow-md object-contain bg-purple-50/30"
+            src={imageUrl}
+            alt="批改结果"
+            className="w-full rounded-2xl shadow-md object-contain"
           />
         </div>
       </div>
 
       {/* 原词列表 */}
       <div className="flex flex-wrap gap-2 justify-center">
-        <span className="text-xs text-slate-400 font-medium self-center mr-1">
-          原词：
-        </span>
         {words.map((w, i) => (
           <span
             key={i}
@@ -225,70 +187,6 @@ export function CorrectionPage() {
           >
             {w}
           </span>
-        ))}
-      </div>
-
-      {/* 逐词批改卡片 */}
-      <div className="space-y-4">
-        {data.result.wordResults.map((wr, wordIdx) => (
-          <div
-            key={wordIdx}
-            className="rounded-3xl bg-white/50 backdrop-blur-lg border border-white/60 shadow-xl p-5"
-          >
-            {/* 词标签 */}
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-sm text-slate-400">
-                第 {wordIdx + 1} 词
-              </span>
-              <span className="text-base font-bold text-slate-700">
-                {wr.word}
-              </span>
-              {wr.isCorrect ? (
-                <span className="text-green-500 text-sm font-bold ml-auto">
-                  ✓ 正确
-                </span>
-              ) : (
-                <span className="text-red-500 text-sm font-bold ml-auto">
-                  ✗ 有误
-                </span>
-              )}
-            </div>
-
-            {/* 逐字结果 */}
-            <div className="space-y-2">
-              {wr.chars.map((cr, ci) => (
-                <div
-                  key={ci}
-                  className={`rounded-xl p-3 text-sm ${
-                    cr.isCorrect
-                      ? "bg-green-50/70 border border-green-100"
-                      : "bg-red-50/70 border border-red-100"
-                  }`}
-                >
-                  {cr.isCorrect ? (
-                    <span className="text-green-600 font-medium">
-                      {cr.expected} ✓
-                    </span>
-                  ) : (
-                    <div>
-                      <span className="text-red-500 font-bold">
-                        {cr.expected}
-                      </span>
-                      <span className="text-slate-400"> → </span>
-                      <span className="text-red-500">
-                        {cr.written || "（空缺）"}
-                      </span>
-                      {cr.note && (
-                        <p className="text-xs text-slate-500 mt-1">
-                          {cr.note}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
         ))}
       </div>
 
