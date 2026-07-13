@@ -22,6 +22,24 @@ export function CorrectionPage() {
   }, []);
 
   const data = analyzeMutation.data;
+
+  // 批改成功后自动收录错词到错题本
+  useEffect(() => {
+    if (!data) return;
+    const wrongWords = data.result.wordResults
+      .filter((wr) => !wr.isCorrect)
+      .map((wr) => wr.word);
+    if (wrongWords.length === 0) return;
+    try {
+      const stored = JSON.parse(
+        localStorage.getItem("smart-dictation-mistakes") ?? "[]",
+      ) as string[];
+      const merged = [...new Set([...stored, ...wrongWords])];
+      localStorage.setItem("smart-dictation-mistakes", JSON.stringify(merged));
+    } catch {
+      // localStorage 不可用时静默失败
+    }
+  }, [data]);
   const summary = data?.result.summary;
   const annotatedImageUrl = data?.annotatedImageUrl;
   const allCorrect = summary?.errorCount === 0;

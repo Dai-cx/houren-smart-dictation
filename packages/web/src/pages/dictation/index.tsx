@@ -6,6 +6,7 @@ export function DictationPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const words: string[] = location.state?.words ?? [];
+  const fromMistakes = (location.state as { from?: string } | null)?.from === "mistakes";
 
   // ---- playback state ----
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -173,15 +174,19 @@ export function DictationPage() {
             <div className="rounded-[1.5rem] border-2 border-dashed border-sky-200 bg-sky-50/30 p-12 text-center space-y-4">
               <p className="text-slate-400 text-lg font-medium">请先输入词语</p>
               <p className="text-slate-300 text-sm">
-                在词表输入页面添加听写内容后再开始
+                {fromMistakes
+                  ? "错题本中没有选中的词，请返回重新选择"
+                  : "在词表输入页面添加听写内容后再开始"}
               </p>
             </div>
 
             <button
-              onClick={() => navigate("/input")}
+              onClick={() =>
+                navigate(fromMistakes ? "/mistakes" : "/input")
+              }
               className="rounded-full bg-gradient-to-r from-pink-400 to-rose-400 px-8 py-3 text-white font-bold text-lg shadow-lg shadow-pink-200/50 hover:scale-105 transition-all duration-200"
             >
-              ← 去输入词表
+              {fromMistakes ? "← 回到错题本" : "← 去输入词表"}
             </button>
           </div>
         </div>
