@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, publicProcedure } from "../trpc/trpc";
 import { students } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -23,6 +24,20 @@ export const studentRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.insert(students).values(input).returning().get();
+      try {
+        return ctx.db.insert(students).values(input).returning().get();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.includes("UNIQUE constraint") || message.includes("student_no")) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "该学号已存在",
+          });
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "创建学生失败",
+        });
+      }
     }),
 });

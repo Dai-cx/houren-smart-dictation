@@ -1,5 +1,5 @@
 import { createTRPCReact } from "@trpc/react-query";
-import type { AppRouter } from "@smart-dictation/server/src/routers";
+import type { AppRouter } from "@smart-dictation/server";
 import type { TRPCLink } from "@trpc/client";
 import type { AnyTRPCRouter } from "@trpc/server";
 

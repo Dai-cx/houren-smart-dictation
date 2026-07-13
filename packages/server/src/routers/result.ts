@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc/trpc";
-import { dictationResults } from "../db/schema";
+import { dictationResults, dictationExercises } from "../db/schema";
 import { eq } from "drizzle-orm";
 
 export const resultRouter = router({
@@ -39,7 +39,7 @@ export const resultRouter = router({
 
       // Compare submitted content against expected content
       const exercise = await ctx.db.query.dictationExercises.findFirst({
-        where: eq(dictationResults.exerciseId, exerciseId),
+        where: eq(dictationExercises.id, exerciseId),
       });
 
       const expectedContent = exercise?.content ?? "";

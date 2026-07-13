@@ -1,4 +1,13 @@
-import type { AlignedChar, ErrorType } from "@smart-dictation/shared";
+/** 对齐后的错误类型（编辑距离） */
+type AlignErrorType = "substitution" | "deletion" | "insertion";
+
+/** 单个字符对齐结果（编辑距离回溯产物） */
+interface AlignedChar {
+  expected: string | null;
+  actual: string | null;
+  errorType: AlignErrorType;
+  isCorrect: boolean;
+}
 
 /**
  * 使用编辑距离（Levenshtein）回溯对齐两个字符序列。
@@ -46,7 +55,7 @@ export function alignCharacters(
   const toErrorType = (
     op: "match" | "sub" | "del" | "ins",
     isCorrect: boolean,
-  ): ErrorType => {
+  ): AlignErrorType => {
     if (isCorrect) return "substitution"; // match 时不使用此值，但保证类型安全
     switch (op) {
       case "sub":

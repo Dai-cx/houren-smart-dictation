@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, publicProcedure } from "../trpc/trpc";
 import { dictationExercises } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -43,11 +44,18 @@ export const dictationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const wordCount = input.content.replace(/\s/g, "").length;
-      return ctx.db
-        .insert(dictationExercises)
-        .values({ ...input, wordCount })
-        .returning()
-        .get();
+      try {
+        const wordCount = input.content.replace(/\s/g, "").length;
+        return ctx.db
+          .insert(dictationExercises)
+          .values({ ...input, wordCount })
+          .returning()
+          .get();
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "创建听写练习失败",
+        });
+      }
     }),
 });

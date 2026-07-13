@@ -46,14 +46,17 @@ export function PhotoUploadPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const recognizeMutation = trpc.ocr.recognize.useMutation({
+  const ocrMutation = trpc.ocr.recognize.useMutation({
     onSuccess: (data) => {
       navigate("/correction", {
-        state: { words, recognizedText: data.recognizedText, ossImageUrl: data.ossImageUrl },
+        state: {
+          words,
+          ossImageUrl: data.ossImageUrl,
+        },
       });
     },
     onError: (err) => {
-      setError(err.message || "识别失败，请重试");
+      setError(err.message || "图片上传失败，请重试");
     },
   });
 
@@ -110,8 +113,8 @@ export function PhotoUploadPage() {
   const handleSubmit = useCallback(() => {
     if (!imageBase64) return;
     setError(null);
-    recognizeMutation.mutate({ imageBase64 });
-  }, [imageBase64, recognizeMutation]);
+    ocrMutation.mutate({ imageBase64 });
+  }, [imageBase64, ocrMutation]);
 
   const handleReset = useCallback(() => {
     setImageDataUrl(null);
@@ -156,7 +159,7 @@ export function PhotoUploadPage() {
   }
 
   // ===== main state =====
-  const isProcessing = recognizeMutation.isPending;
+  const isProcessing = ocrMutation.isPending;
 
   return (
     <div className="mx-auto max-w-2xl pt-6 space-y-6">
@@ -205,10 +208,10 @@ export function PhotoUploadPage() {
                 {isProcessing ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    识别中...
+                    批改中...
                   </>
                 ) : (
-                  "开始识别"
+                  "开始批改"
                 )}
               </button>
             </div>

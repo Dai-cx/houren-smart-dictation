@@ -5,6 +5,8 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "./routers";
 import { createContext } from "./trpc/context";
 
+export type { AppRouter } from "./routers";
+
 const app = express();
 const PORT = process.env.PORT ?? 3000;
 
