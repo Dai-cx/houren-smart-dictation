@@ -46,8 +46,8 @@ tRPC 过程：`query`（GET，幂等读取）/ `mutation`（POST，写入）。v
 /input       → InputTaskPage      词表输入（粘贴词语 → 自动解析 → /dictation）
 /dictation   → DictationPage      语音播报（阿里云 TTS 合成 + 语速/间隔调节 → /upload）
 /upload      → PhotoUploadPage    拍照上传（图片预览 → OSS → OCR 识别 → /correction）
-/correction  → CorrectionPage     批改结果（编辑距离对齐 + 正确率统计 + AI 错因分析）
-/mistakes    → MistakeBookPage    错题本
+/correction  → CorrectionPage     批改结果（标注图片：全对绿勾 / 错字红圈，自动收录错词）
+/mistakes    → MistakeBookPage    错题本（localStorage 持久化，× 移除 + 多选再次听写）
 ```
 
 **页面间通过 React Router state 传递数据**：
@@ -56,7 +56,10 @@ tRPC 过程：`query`（GET，幂等读取）/ `mutation`（POST，写入）。v
 |---|---|
 | `/input` → `/dictation` | `{ words: string[] }` |
 | `/dictation` → `/upload` | `{ words: string[] }` |
-| `/upload` → `/correction` | `{ words: string[], recognizedText: string, ossImageUrl: string }` |
+| `/upload` → `/correction` | `{ words: string[], ossImageUrl: string }` |
+| `/mistakes` → `/dictation` | `{ words: string[], from: "mistakes" }` |
+
+**错题本数据流**：批改完成后，`CorrectionPage` 自动将错词（`wordResults` 中 `isCorrect === false` 的词）写入 `localStorage`（key: `smart-dictation-mistakes`，自动去重）。`MistakeBookPage` 从 localStorage 读取，支持移除和多选再次听写。
 
 ### 环境变量
 
@@ -88,9 +91,9 @@ tRPC 过程：`query`（GET，幂等读取）/ `mutation`（POST，写入）。v
 
 **共用签名模块**：`lib/alibaba-signer.ts` 封装 HMAC-SHA1 百分比编码、规范化查询串构建和 RPC 签名计算，被 TTS 和 OCR 模块共用。支持 `bodyParams` 参数（纳入签名但不放入 URL）。
 
-**OCR 流程**：前端 base64 → tRPC → 服务端上传 OSS → 拿 OSS URL 调 `RecognizeCharacter` → 从 `Data.Results[].Text` 拼接识别文本 → 返回 `{ recognizedText, ossImageUrl }` 给前端。
+**OCR 流程**：前端 base64 → tRPC → 服务端上传 OSS → 拿 OSS URL 调 `RecognizeCharacter`（`OutputCharInfo=true`）→ 从 `Data.Results[].Text` 拼接识别文本 + 字符位置估算 → 返回 `{ recognizedText, ossImageUrl }` 给前端。
 
-**通义千问多模态分析**：手写图片 OSS URL + OCR 文本 + 期望词表 → `qwen-vl-plus` 视觉模型 → 直接查看字迹判断错误类型（笔画错误/偏旁遗漏/形近混淆/OCR误识等）→ 返回结构化错因分析 JSON。
+**批改流程**：AI 判断（qwen-vl-plus 视觉模型直接看图评字）→ OCR 获取字符位置 → 编辑距离对齐（`alignCharacters`）→ 错误字位置映射 → Sharp SVG 叠加标注（全对绿勾 / 错字红圈椭圆）→ 上传标注图到 OSS → 前端展示标注图 + 自动收录错词到 localStorage。
 
 ### 导航栏
 
@@ -125,28 +128,33 @@ tRPC 过程：`query`（GET，幂等读取）/ `mutation`（POST，写入）。v
 ### 目录约定
 
 ```
-packages/shared/src/types/     # DTO 接口定义，前后端共享
-  student.ts                   # StudentDTO, CreateStudentInput
-  dictation.ts                 # DictationExerciseDTO, CreateDictationInput
-  result.ts                    # DictationResultDTO, SubmitResultInput, ErrorEntry
-  tts.ts                       # TTSSynthesizeInput, TTSSynthesizeOutput
-  ocr.ts                       # OCRRecognizeInput, OCRRecognizeOutput
-  correction.ts                # AlignedChar, ErrorAnalysis, CorrectionAnalysis, CorrectionAnalyzeInput
-  api.ts                       # PaginatedResponse<T>
+packages/shared/src/
+  index.ts                      # barrel export（所有类型 + diff + constants）
+  diff.ts                       # 编辑距离对齐算法（Levenshtein 回溯）
+  constants.ts                  # 年级常量
+  types/                        # DTO 接口定义，前后端共享
+    student.ts                  # StudentDTO, CreateStudentInput
+    dictation.ts                # DictationExerciseDTO, CreateDictationInput
+    result.ts                   # DictationResultDTO, SubmitResultInput, ErrorEntry
+    tts.ts                      # TTSSynthesizeInput, TTSSynthesizeOutput
+    ocr.ts                      # OCRRecognizeInput, OCRRecognizeOutput
+    correction.ts               # CharResult, WordResult, CorrectionResult, CorrectionAnalysis 等
+    api.ts                      # PaginatedResponse<T>
 packages/server/src/
   index.ts                     # Express 入口（dotenv + json 10mb + tRPC 中间件 + /health）
   lib/
     alibaba-signer.ts          # 阿里云通用 HMAC-SHA1 RPC 签名
     alibaba-tts.ts             # TTS Token 获取 + 语音合成
-    alibaba-ocr.ts             # OCR 手写识别（OSS 中转 → RecognizeCharacter，返回 OSS URL）
+    alibaba-ocr.ts             # OCR 手写识别（含字符位置估算、forceHorizontal、QPS 重试）
     alibaba-oss.ts             # OSS 图片上传
     alibaba-qwen.ts            # 通义千问视觉模型（qwen-vl-plus）多模态错因分析
+    image-annotator.ts         # Sharp SVG 叠加标注（全对绿勾 / 错字红圈）
   db/
     index.ts                   # better-sqlite3 连接 + drizzle 实例
     schema/                    # Drizzle 表定义
       index.ts                 # barrel export
   routers/
-    index.ts                   # appRouter（合并 student/dictation/result/tts/ocr）
+    index.ts                   # appRouter（合并 student/dictation/result/tts/ocr/correction）
     student.ts                 # 学生 CRUD
     dictation.ts               # 听写练习 CRUD
     result.ts                  # 批改结果提交 + 评分
@@ -165,19 +173,16 @@ packages/web/src/
   lib/
     utils.ts                   # cn() 工具（clsx + tailwind-merge）
     trpc.ts                    # tRPC React 客户端（createTRPCReact<AppRouter>）
-    diff.ts                    # 编辑距离对齐算法（Levenshtein 回溯）
   layouts/
-    root-layout.tsx            # 胶囊导航栏
+    root-layout.tsx            # 胶囊导航栏（返回按钮 + 吉祥物 + 步骤名 + 错题本入口）
   pages/
     home.tsx                   # HomePage — 欢迎页
     InputTaskPage.tsx          # InputTaskPage — 词表输入（多分隔符解析 + 标签预览）
     dictation/
       index.tsx                # DictationPage — 阿里云 TTS 播报 + 语速/间隔滑块
     upload.tsx                 # PhotoUploadPage — 文件选择/拖拽 + Canvas 压缩 + OCR 提交
-    correction.tsx             # CorrectionPage — 编辑距离对齐 + 正确率统计 + 字符级高亮 + AI 错因分析
-    mistakes.tsx               # MistakeBookPage
-  components/
-    spring-background.tsx      # 春天背景组件
+    correction.tsx             # CorrectionPage — 标注图片展示 + 错词自动收录到 localStorage
+    mistakes.tsx               # MistakeBookPage — 错词管理（× 移除 + 多选 + 再次听写）
 ```
 
 ### 视觉设计约定
